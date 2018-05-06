@@ -1,0 +1,11 @@
+language: C
+
+before_install:
+    - curl https://raw.githubusercontent.com/MilanVasko/travis-scripts/master/before_install.sh | sh
+
+script:
+    - curl https://raw.githubusercontent.com/MilanVasko/travis-scripts/master/script.sh | sh
+
+after_script:
+    - curl https://raw.githubusercontent.com/MilanVasko/travis-scripts/master/after_script.sh | sh
+
