@@ -1,4 +1,8 @@
 local util = require "gumbo.dom.util"
+local Text = require "gumbo.dom.Text"
+local assertions = require "gumbo.dom.assertions"
+local assertComment = assertions.assertComment
+local constructor = assert(getmetatable(Text))
 local setmetatable = setmetatable
 local _ENV = nil
 
@@ -8,38 +12,16 @@ local Comment = util.merge("CharacterData", {
     nodeType = 8
 })
 
-local getters = Comment.getters or {}
+Comment.__index = util.indexFactory(Comment)
 
-function Comment:__index(k)
-    local field = Comment[k]
-    if field then
-        return field
-    else
-        local getter = getters[k]
-        if getter then
-            return getter(self)
-        end
-    end
-end
-
-function Comment:new(data)
-    return setmetatable({data = data}, Comment)
+function Comment:__tostring()
+    assertComment(self)
+    return "<!--" .. self.data .. "-->"
 end
 
 function Comment:cloneNode()
+    assertComment(self)
     return setmetatable({data = self.data}, Comment)
 end
 
-function Comment:isEqualNode(node)
-    if node
-        and node.nodeType == Comment.nodeType
-        and self.nodeType == Comment.nodeType
-        and node.data == self.data
-    then
-        return true
-    else
-        return false
-    end
-end
-
-return setmetatable(Comment, {__call = Comment.new})
+return setmetatable(Comment, constructor)

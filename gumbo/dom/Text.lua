@@ -1,4 +1,7 @@
 local util = require "gumbo.dom.util"
+local assertions = require "gumbo.dom.assertions"
+local assertTextNode = assertions.assertTextNode
+local assertNilableString = assertions.assertNilableString
 local setmetatable = setmetatable
 local _ENV = nil
 
@@ -8,39 +11,20 @@ local Text = util.merge("CharacterData", {
     nodeType = 3
 })
 
-local getters = Text.getters or {}
+Text.__index = util.indexFactory(Text)
 
-function Text:__index(k)
-    local field = Text[k]
-    if field then
-        return field
-    else
-        local getter = getters[k]
-        if getter then
-            return getter(self)
-        end
-    end
-end
-
-function Text:new(data)
-    return setmetatable({data = data}, Text)
+function Text:__tostring()
+    assertTextNode(self)
+    return '#text "' .. self.data .. '"'
 end
 
 function Text:cloneNode()
+    assertTextNode(self)
     return setmetatable({data = self.data}, Text)
 end
 
-function Text:isEqualNode(node)
-    if node
-        and node.nodeType == Text.nodeType
-        and self.nodeType == Text.nodeType
-        and node.data == self.data
-    then
-        return true
-    else
-        return false
-    end
-end
+-- TODO: function Text:splitText(offset)
+-- TODO: function Text.getters:wholeText()
 
 local escmap = {
     ["&"] = "&amp;",
@@ -48,8 +32,15 @@ local escmap = {
     [">"] = "&gt;",
 }
 
-function getters:escapedData()
-    return (self.data:gsub("[&<>]", escmap):gsub("\xC2\xA0", "&nbsp;"))
+function Text.getters:escapedData()
+    return (self.data:gsub("[&<>]", escmap):gsub("\194\160", "&nbsp;"))
 end
 
-return setmetatable(Text, {__call = Text.new})
+local constructor = {
+    __call = function(self, data)
+        assertNilableString(data)
+        return setmetatable({data = data}, self)
+    end
+}
+
+return setmetatable(Text, constructor)

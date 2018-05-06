@@ -4,48 +4,36 @@ local Set = require "gumbo.Set"
 local NamedNodeMap = require "gumbo.dom.NamedNodeMap"
 local Attr = require "gumbo.dom.Attr"
 local HTMLCollection = require "gumbo.dom.HTMLCollection"
-local namePattern = util.namePattern
-local type, ipairs, assert = type, ipairs, assert
+local assertions = require "gumbo.dom.assertions"
+local assertElement = assertions.assertElement
+local assertNode = assertions.assertNode
+local assertName = assertions.assertName
+local assertString = assertions.assertString
+local NYI = assertions.NYI
+local type, ipairs = type, ipairs
 local tremove, rawset, setmetatable = table.remove, rawset, setmetatable
 local _ENV = nil
-local setters = {}
 
 local Element = util.merge("Node", "ChildNode", "ParentNode", {
     type = "element",
     nodeType = 1,
     namespaceURI = "http://www.w3.org/1999/xhtml",
-    attributes = {length = 0},
+    attributes = setmetatable({length = 0}, NamedNodeMap),
     readonly = Set{"tagName", "classList"}
 })
 
-local getters = Element.getters
-local readonly = Element.readonly
+Element.__index = util.indexFactory(Element)
+Element.__newindex = util.newindexFactory(Element)
 
-function Element:__index(k)
-    local field = Element[k]
-    if field then
-        return field
-    end
-    local getter = getters[k]
-    if getter then
-        return getter(self)
-    end
-    if type(k) == "number" then
-        return self.childNodes[k]
-    end
-end
-
-function Element:__newindex(k, v)
-    local setter = setters[k]
-    if setter then
-        setter(self, v)
-    elseif not readonly[k] and type(k) ~= "number" then
-        rawset(self, k, v)
-    end
+function Element:__tostring()
+    assertElement(self)
+    return self.tagHTML
 end
 
 function Element:getElementsByTagName(localName)
-    assert(type(localName) == "string")
+    --TODO: should use assertElement(self), but method is shared with Document
+    assertNode(self)
+    assertString(localName)
     local collection = {}
     local length = 0
     if localName ~= "" then
@@ -77,7 +65,9 @@ function Element:getElementsByTagName(localName)
 end
 
 function Element:getElementsByClassName(classNames)
-    assert(type(classNames) == "string")
+    --TODO: should use assertElement(self), but method is shared with Document
+    assertNode(self)
+    assertString(classNames)
     local classes = {}
     local collection = {}
     local length = 0
@@ -109,6 +99,7 @@ function Element:getElementsByClassName(classNames)
 end
 
 function Element:getAttribute(name)
+    assertElement(self)
     if type(name) == "string" then
         -- If the context object is in the HTML namespace and its node document
         -- is an HTML document, let name be converted to ASCII lowercase.
@@ -125,7 +116,9 @@ function Element:getAttribute(name)
 end
 
 function Element:setAttribute(name, value)
-    assert(name:find(namePattern), "InvalidCharacterError")
+    assertElement(self)
+    assertName(name)
+    assertString(value)
     local attributes = self.attributes
     if attributes == Element.attributes then
         local attr = setmetatable({name = name, value = value}, Attr)
@@ -143,6 +136,8 @@ function Element:setAttribute(name, value)
 end
 
 function Element:removeAttribute(name)
+    assertElement(self)
+    assertString(name)
     local attributes = self.attributes
     for i, attr in ipairs(attributes) do
         if attr.name == name then
@@ -153,22 +148,25 @@ function Element:removeAttribute(name)
 end
 
 function Element:hasAttribute(name)
+    assertElement(self)
     return self:getAttribute(name) and true or false
 end
 
 function Element:hasAttributes()
+    assertElement(self)
     return self.attributes[1] and true or false
 end
 
 function Element:cloneNode(deep)
-    if deep then assert(false, "NYI") end -- << TODO
+    assertElement(self)
+    if deep then NYI() end -- << TODO
     local clone = {
         localName = self.localName,
         namespaceURI = self.namespaceURI,
         prefix = self.prefix
     }
     if self:hasAttributes() then
-        local attrs = {}
+        local attrs = {} -- TODO: attrs = createtable(#self.attributes, 0)
         for i, attr in ipairs(self.attributes) do
             local t = {
                 name = attr.name,
@@ -183,10 +181,17 @@ function Element:cloneNode(deep)
     return setmetatable(clone, Element)
 end
 
--- TODO: function Element:isEqualNode(node) end
+-- TODO: Element.prefix
+-- TODO: function Element.getAttributeNS(namespace, localName)
+-- TODO: function Element.setAttributeNS(namespace, name, value)
+-- TODO: function Element.removeAttributeNS(namespace, localName)
+-- TODO: function Element.hasAttributeNS(namespace, localName)
+-- TODO: function Element.closest(selectors)
+-- TODO: function Element.matches(selectors)
+-- TODO: function Element.getElementsByTagNameNS(namespace, localName)
 
 -- TODO: implement all cases from http://www.w3.org/TR/dom/#dom-element-tagname
-function getters:tagName()
+function Element.getters:tagName()
     if self.namespaceURI == "http://www.w3.org/1999/xhtml" then
         return self.localName:upper()
     else
@@ -194,21 +199,21 @@ function getters:tagName()
     end
 end
 
-getters.nodeName = getters.tagName
+Element.getters.nodeName = Element.getters.tagName
 
-function getters:classList()
+function Element.getters:classList()
     local class = self.attributes.class
+    local list = {}
+    local length = 0
     if class then
-        local list = {}
-        local length = 0
         for s in class.value:gmatch "%S+" do
             length = length + 1
             list[length] = s
             list[s] = length
         end
-        list.length = length
-        return list
     end
+    list.length = length
+    return list
 end
 
 local void = Set {
@@ -232,11 +237,11 @@ local boolattr = Set {
     "typemustmatch"
 }
 
-function getters:isRaw()
+function Element.getters:isRaw()
     return raw[self.localName]
 end
 
-function getters:isVoid()
+function Element.getters:isVoid()
     return void[self.localName]
 end
 
@@ -265,7 +270,7 @@ local function serialize(node, buf)
     end
 end
 
-function getters:innerHTML()
+function Element.getters:innerHTML()
     local buffer = Buffer()
     for i, node in ipairs(self.childNodes) do
         serialize(node, buffer)
@@ -273,13 +278,13 @@ function getters:innerHTML()
     return buffer:tostring()
 end
 
-function getters:outerHTML()
+function Element.getters:outerHTML()
     local buffer = Buffer()
     serialize(self, buffer)
     return buffer:tostring()
 end
 
-function getters:tagHTML()
+function Element.getters:tagHTML()
     local buffer = Buffer()
     buffer:write("<", self.localName)
     for i, attr in ipairs(self.attributes) do
@@ -298,25 +303,24 @@ function getters:tagHTML()
 end
 
 -- TODO:
-local NYI = function() assert(false, "Not yet implemented") end
-setters.innerHTML = NYI
-setters.outerHTML = NYI
+Element.setters.innerHTML = NYI
+Element.setters.outerHTML = NYI
 
-function getters:id()
+function Element.getters:id()
     local id = self.attributes.id
     return id and id.value
 end
 
-function getters:className()
+function Element.getters:className()
     local class = self.attributes.class
     return class and class.value
 end
 
-function setters:id(value)
+function Element.setters:id(value)
     self:setAttribute("id", value)
 end
 
-function setters:className(value)
+function Element.setters:className(value)
     self:setAttribute("class", value)
 end
 

@@ -52,28 +52,68 @@ variables declared within take precedence over the defaults.
 Usage
 -----
 
-The `gumbo` module provides two functions:
+The `gumbo` module provides 2 functions:
 
-`parse(html [, tab_stop])`
+### parse
 
-Parses a string of UTF-8 encoded HTML and returns a [`Document`] node.
-The optional `tab_stop` parameter specifies the size to use for tab
-characters when computing source positions (default: `8`).
+```lua
+local document = gumbo.parse(html, tabStop)
+```
 
-`parse_file(path_or_file [, tab_stop])`
+**Parameters:**
 
-As above, but first reading input from an open [file handle] or opening
-and reading input from a filename specified as a string.
+1. `html`: A *string* of UTF-8 encoded HTML.
+2. `tabStop`: The *number* of columns to count for tab characters
+   when computing source positions (*optional*; defaults to `8`).
 
-Either function may return `nil` and an error message on failure, which
-can either be handled explicitly or wrapped with `assert()`.
+**Returns:**
 
-See also: [find_links.lua] and [remove_by_id.lua].
+Either a [`Document`] node on success, or `nil` and an error message on
+failure.
+
+### parseFile
+
+```lua
+local document = gumbo.parseFile(pathOrFile, tabStop)
+```
+
+**Parameters:**
+
+1. `pathOrFile`: Either a [file handle] or filename *string* that refers
+   to a file containing UTF-8 encoded HTML.
+2. `tabStop`: As above.
+
+**Returns:**
+
+As above.
+
+Example
+-------
+
+The following is a simple demonstration of how to find an element by ID
+and then print the contents of it's first child text node.
+
+```lua
+local gumbo = require "gumbo"
+local document = gumbo.parse('<div id="foo">Hello World</div>')
+local foo = document:getElementById("foo")
+local text = foo.childNodes[1].data
+print(text)
+```
+
+Note: this example omits error handling for the sake of simplicity.
+Production code should wrap each step with `assert()` or some other,
+application-specific error handling.
+
+See also:
+
+* [find_links.lua](https://github.com/craigbarnes/lua-gumbo/blob/master/examples/find_links.lua)
+* [remove_by_id.lua](https://github.com/craigbarnes/lua-gumbo/blob/master/examples/remove_by_id.lua)
 
 Output
 ------
 
-The `parse` and `parse_file` functions both return a [`Document`] node,
+The `parse` and `parseFile` functions both return a [`Document`] node,
 containing a tree of [descendant] nodes. The structure and API of this
 tree is *almost* a subset of the [DOM] Level 4 Core API, with the
 following (intentional) exceptions:
@@ -88,32 +128,32 @@ lua-gumbo specific documentation currently exists, but since it's
 an implementation of a standard API, cross-checking the list with
 the [MDN DOM reference] should suffice for now.
 
+*Note:* When referring to external DOM documentation, don't forget to
+translate JavaScript examples to use Lua `object:method()` call syntax.
 
 DOM API
 -------
 
-### Document
+### `Document`
 
 Inherits from [`Node`]. Implements [`ParentNode`].
 
 * [`documentElement`](https://developer.mozilla.org/en-US/docs/Web/API/document.documentElement)
-* [`doctype`](https://developer.mozilla.org/en-US/docs/Web/API/document.doctype)
-   * [`name`](https://developer.mozilla.org/en-US/docs/Web/API/DocumentType#Properties)
-   * [`publicId`](https://developer.mozilla.org/en-US/docs/Web/API/DocumentType#Properties)
-   * [`systemId`](https://developer.mozilla.org/en-US/docs/Web/API/DocumentType#Properties)
+* [`doctype`](#documenttype)
 * `URL`
 * `documentURI`
 * [`compatMode`](https://developer.mozilla.org/en-US/docs/Web/API/document.compatMode)
 * `characterSet`
 * `contentType`
+* [`getElementById()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.getElementById)
 * [`getElementsByTagName()`](https://developer.mozilla.org/en-US/docs/Web/API/document.getElementsByTagName)
 * [`getElementsByClassName()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.getElementsByClassName)
 * [`createElement()`](https://developer.mozilla.org/en-US/docs/Web/API/document.createElement)
 * [`createTextNode()`](https://developer.mozilla.org/en-US/docs/Web/API/document.createTextNode)
 * [`createComment()`](https://developer.mozilla.org/en-US/docs/Web/API/document.createComment)
-* [`getElementById()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.getElementById)
+* [`adoptNode()`](https://developer.mozilla.org/en-US/docs/Web/API/document.adoptNode)
 
-### Element
+### `Element`
 
 Inherits from [`Node`]. Implements [`ParentNode`], [`ChildNode`] and
 [`NonDocumentTypeChildNode`].
@@ -141,15 +181,15 @@ Inherits from [`Node`]. Implements [`ParentNode`], [`ChildNode`] and
 * [`getElementsByTagName()`](https://developer.mozilla.org/en-US/docs/Web/API/Element.getElementsByTagName)
 * [`getElementsByClassName()`](https://developer.mozilla.org/en-US/docs/Web/API/Element.getElementsByClassName)
 
-### Text
+### `Text`
 
 Inherits from [`CharacterData`].
 
-### Comment
+### `Comment`
 
 Inherits from [`CharacterData`].
 
-### CharacterData
+### `CharacterData`
 
 Inherits from [`Node`]. Implements [`ChildNode`] and
 [`NonDocumentTypeChildNode`].
@@ -157,7 +197,7 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * [`data`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
 * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
 
-### Node
+### `Node`
 
 * [`childNodes`](https://developer.mozilla.org/en-US/docs/Web/API/Node.childNodes)
   * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/NodeList#Properties)
@@ -182,9 +222,19 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * `DOCUMENT_FRAGMENT_NODE`
 * [`hasChildNodes()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.hasChildNodes)
 * [`contains()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.contains)
+* [`appendChild()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.appendChild)
+* [`insertBefore()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.insertBefore)
 * [`removeChild()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.removeChild)
 
-### Attr
+### `DocumentType`
+
+Inherits from [`Node`]. Implements [`ChildNode`].
+
+* `name`
+* `publicId`
+* `systemId`
+
+### `Attr`
 
 * [`name`](https://developer.mozilla.org/en-US/docs/Web/API/Attr#Properties)
 * [`value`](https://developer.mozilla.org/en-US/docs/Web/API/Attr#Properties)
@@ -192,7 +242,7 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * `localName`
 * [`specified`](https://developer.mozilla.org/en-US/docs/Web/API/Attr#Properties)
 
-### ParentNode
+### `ParentNode`
 
 * [`children`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.children)
   * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCollection#Properties)
@@ -202,78 +252,9 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * [`firstElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.firstElementChild)
 * [`lastElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.lastElementChild)
 
-*Note:* When referring to external DOM documentation, don't forget to
-translate any JavaScript examples to use Lua's `object:method()` call
-syntax.
+### `ChildNode`
 
-TODO
-----
-
-Implement:
-
-* `Document.getElementsByTagNameNS()`
-* `Document.createElementNS()`
-* `Document.createDocumentFragment()`
-* `Document.createProcessingInstruction()`
-* `Document.importNode()`
-* `Document.adoptNode()`
-* `Document.createAttribute()`
-* `Document.createAttributeNS()`
-* `Document.createEvent()`
-* `Document.createRange()`
-* `Element.prefix`
-* `Element.getAttributeNS()`
-* `Element.setAttributeNS()`
-* `Element.removeAttributeNS()`
-* `Element.hasAttributeNS()`
-* `Element.closest()`
-* `Element.matches()`
-* `Element.getElementsByTagNameNS()`
-* `Element.insertAdjacentHTML()`
-* `Text.wholeText`
-* `Text.splitText()`
-* `Node.textContent`
-* `Node.baseURI`
-* `Node.normalize()`
-* `Node.cloneNode()`
-* `Node.isEqualNode()`
-* `Node.compareDocumentPosition()`
-* `Node.lookupPrefix()`
-* `Node.lookupNamespaceURI()`
-* `Node.isDefaultNamespace()`
-* `Node.insertBefore()`
-* `Node.appendChild()`
-* `Node.replaceChild()`
-* `CharacterData.substringData()`
-* `CharacterData.appendData()`
-* `CharacterData.insertData()`
-* `CharacterData.deleteData()`
-* `CharacterData.replaceData()`
-* `ParentNode.append()`
-* `ParentNode.prepend()`
-* `ParentNode.query()`
-* `ParentNode.queryAll()`
-* `ParentNode.querySelector()`
-* `ParentNode.querySelectorAll()`
-* `Attr.namespaceURI`
-* `Attr.ownerElement`
-* `NamedNodeMap.getNamedItem()`
-* `NamedNodeMap.getNamedItemNS()`
-* `NamedNodeMap.setNamedItem()`
-* `NamedNodeMap.setNamedItemNS()`
-* `NamedNodeMap.removeNamedItem()`
-* `NamedNodeMap.removeNamedItemNS()`
-
-Not Implemented
----------------
-
-Many parts of the DOM have a suboptimal API due to the specification
-being closely aligned with JavaScript and it's various flaws. Some of
-the flawed but relatively simple APIs I implemented anyway, but I had to
-draw the line at these:
-
-* [`Document.createNodeIterator()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.createNodeIterator)
-* [`Document.createTreeWalker()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.createTreeWalker)
+* [`remove()`](https://developer.mozilla.org/en-US/docs/Web/API/ChildNode.remove)
 
 Testing
 -------
@@ -288,6 +269,7 @@ Testing
   and memory usage stats.
 * `make git-hooks`: Installs some git hooks to disallow commits with
   failing tests or a commit message longer than 72 columns.
+* `make todo`: Lists all `TODO:` comments found in the code.
 
 [License]
 ---------
@@ -315,12 +297,13 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [HTML5]: http://www.whatwg.org/specs/web-apps/current-work/multipage/introduction.html#is-this-html5?
 [DOM]: https://dom.spec.whatwg.org/
 [descendant]: https://dom.spec.whatwg.org/#concept-tree-descendant
+[`Document`]: #document
 [`Element`]: #element
 [`CharacterData`]: #characterdata
 [`Attr`]: #attr
 [`Node`]: #node
 [`ParentNode`]: #parentnode
-[`ChildNode`]: https://developer.mozilla.org/en-US/docs/Web/API/ChildNode
+[`ChildNode`]: #childnode
 [`NonDocumentTypeChildNode`]: https://developer.mozilla.org/en-US/docs/Web/API/NonDocumentTypeChildNode
 [Gumbo]: https://github.com/google/gumbo-parser
 [Gumbo installation]: https://github.com/google/gumbo-parser#installation
@@ -328,8 +311,6 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [pkg-config]: https://en.wikipedia.org/wiki/Pkg-config
 [file handle]: http://www.lua.org/manual/5.2/manual.html#6.8
 [tree-construction tests]: https://github.com/html5lib/html5lib-tests/tree/master/tree-construction
-[find_links.lua]: https://github.com/craigbarnes/lua-gumbo/blob/master/examples/find_links.lua
-[remove_by_id.lua]: https://github.com/craigbarnes/lua-gumbo/blob/master/examples/remove_by_id.lua
 [MDN DOM reference]: https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model#DOM_interfaces
 [luacov]: https://keplerproject.github.io/luacov/
 [Hunspell]: https://en.wikipedia.org/wiki/Hunspell

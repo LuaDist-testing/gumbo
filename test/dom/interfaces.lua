@@ -1,7 +1,8 @@
 local gumbo = require "gumbo"
+local Document = require "gumbo.dom.Document"
 local Text = require "gumbo.dom.Text"
 local Comment = require "gumbo.dom.Comment"
-local assert, rep, pcall = assert, string.rep, pcall
+local assert, pcall = assert, pcall
 local _ENV = nil
 
 local input = [[
@@ -37,8 +38,12 @@ assert(document:getElementsByTagName("div")[1] == main)
 assert(document:getElementsByTagName("*").length == 11)
 assert(document:getElementsByTagName("").length == 0)
 assert(body:getElementsByTagName("h1")[1] == heading)
-local tendivs = assert(gumbo.parse(rep("<div>", 10)))
-assert(tendivs:getElementsByTagName("div").length == 10)
+
+do
+    local tendivs = assert(("<div>"):rep(10))
+    local document = assert(gumbo.parse(tendivs))
+    assert(document:getElementsByTagName("div").length == 10)
+end
 
 assert(document.nodeName == "#document")
 assert(#document.childNodes == 1)
@@ -68,12 +73,29 @@ assert(document:createComment("........"):isEqualNode(comment) == false)
 assert(document:createTextNode("Title "):isEqualNode(text) == true)
 assert(document:createTextNode("......"):isEqualNode(text) == false)
 
+-- Should all throw InvalidCharacterError
+assert(not pcall(document.createElement, document, "xy\tz"))
+assert(not pcall(document.createElement, document, "xy\0z"))
+assert(not pcall(document.createElement, document, ".xyz"))
+assert(not pcall(document.createElement, document, "-xyz"))
+assert(not pcall(document.createElement, document, "123"))
+assert(not pcall(document.createElement, document, "\205\190"))
+
+assert(Document().nodeName == "#document")
 assert(Text("xyz..").data == "xyz..")
 assert(Comment(" etc ").data == " etc ")
 assert(Comment("comment "):isEqualNode(comment) == true)
 assert(Comment("........"):isEqualNode(comment) == false)
 assert(Text("Title "):isEqualNode(text) == true)
 assert(Text("......"):isEqualNode(text) == false)
+assert(Text().data == "")
+assert(Comment().data == "")
+assert(not pcall(Text, false))
+assert(not pcall(Comment, false))
+assert(not pcall(Text, {}))
+assert(not pcall(Comment, {}))
+assert(not pcall(Text, 100))
+assert(not pcall(Comment, 100))
 
 local newelem = assert(document:createElement("div"))
 assert(newelem.localName == "div")
@@ -85,9 +107,17 @@ newelem:setAttribute("test", "---")
 assert(newelem.attributes.length == 1)
 newelem:setAttribute("xyz", "+++")
 assert(newelem.attributes.length == 2)
+-- TODO: assert(newelem.attributes[2].ownerElement == newelem)
 assert(newelem:getAttribute("test") == "---")
 assert(newelem:getAttribute("xyz") == "+++")
 assert(newelem:getAttribute("xyz") == newelem.attributes[2].value)
+assert(newelem.ownerDocument == document)
+assert(newelem.parentNode == nil)
+
+local newdoc = assert(gumbo.parse(""))
+newdoc.body:appendChild(newelem)
+assert(newelem.ownerDocument == newdoc)
+assert(newelem.parentNode == newdoc.body)
 
 assert(p1.nextSibling == p2)
 assert(p2.nextSibling == p3)
@@ -175,6 +205,7 @@ assert(main:hasAttributes() == true)
 assert(main.attributes.length == 2)
 assert(main:hasAttribute("class") == true)
 assert(main:getAttribute("class") == "foo bar baz etc")
+-- TODO: assert(main.attributes.class.ownerElement == main)
 assert(main.id == "main")
 assert(main.id == main.attributes.id.value)
 assert(main.id == main.attributes.id.textContent)
@@ -197,6 +228,7 @@ assert(mainclone.attributes[1].textContent == "main")
 assert(mainclone.attributes.length == 2)
 assert(mainclone.classList.length == 4)
 assert(mainclone:hasChildNodes() == false)
+-- TODO: cloneNode() needs to support deep==true for these 2:
 -- TODO: assert(mainclone:isEqualNode(main) == true)
 -- TODO: assert(mainclone:isEqualNode(body) == false)
 
@@ -311,7 +343,10 @@ heading.lastChild = "bla"
 assert(heading.firstChild == heading.childNodes[1])
 assert(heading.lastChild == heading.childNodes[2])
 
-heading.childNodes[2]:remove()
+assert(comment == heading.childNodes[2])
+assert(comment.parentNode == heading)
+comment:remove()
+assert(comment.parentNode == nil)
 assert(heading:hasChildNodes() == true)
 assert(heading.childNodes.length == 1)
 assert(heading.firstChild == heading.childNodes[1])
@@ -336,6 +371,16 @@ assert(html.parentNode == nil)
 do
     local document = assert(gumbo.parse("<!doctype html><p>no-quirks!</p>"))
     assert(document.compatMode == "CSS1Compat")
+    local doctype = assert(document.doctype)
+    assert(doctype.nodeType == document.DOCUMENT_TYPE_NODE)
+    assert(doctype.nodeName == doctype.name)
+    assert(doctype.name == "html")
+    assert(doctype.publicId == "")
+    assert(doctype.systemId == "")
+    doctype.publicId = nil
+    assert(doctype.publicId == "")
+    doctype.systemId = nil
+    assert(doctype.systemId == "")
 end
 
 do

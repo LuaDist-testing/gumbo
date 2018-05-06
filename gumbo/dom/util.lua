@@ -1,14 +1,11 @@
 local type, select, pairs, require = type, select, pairs, require
-local assert = assert
+local assert, rawset = assert, rawset
 local _ENV = nil
 
-local util = {
-    -- TODO: Implement full Name pattern from http://www.w3.org/TR/xml/#NT-Name
-    namePattern = "^[A-Za-z:_][A-Za-z0-9:_.-]*$"
-}
+local util = {}
 
 function util.merge(...)
-    local t = {}
+    local t = {getters={}}
     for i = 1, select("#", ...) do
         local arg = select(i, ...)
         local argtype = type(arg)
@@ -31,8 +28,35 @@ function util.merge(...)
             end
         end
     end
-    t.__index = t
     return t
+end
+
+function util.indexFactory(t)
+    local getters = assert(t.getters)
+    return function(self, k)
+        local field = t[k]
+        if field then
+            return field
+        else
+            local getter = getters[k]
+            if getter then
+                return getter(self)
+            end
+        end
+    end
+end
+
+function util.newindexFactory(t)
+    local setters = assert(t.setters)
+    local readonly = assert(t.readonly)
+    return function(self, k, v)
+        local setter = setters[k]
+        if setter then
+            setter(self, v)
+        elseif not readonly[k] then
+            rawset(self, k, v)
+        end
+    end
 end
 
 return util

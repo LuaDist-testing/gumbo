@@ -18,6 +18,7 @@
 local ffi = require "ffi"
 local C = require "gumbo.ffi-cdef"
 local Document = require "gumbo.dom.Document"
+local DocumentType = require "gumbo.dom.DocumentType"
 local Element = require "gumbo.dom.Element"
 local Attr = require "gumbo.dom.Attr"
 local Text = require "gumbo.dom.Text"
@@ -35,7 +36,7 @@ local w3 = "http://www.w3.org/"
 local tagnsmap = LookupTable{w3.."2000/svg", w3.."1998/Math/MathML"}
 local attrnsmap = LookupTable{"xlink", "xml", "xmlns"}
 local quirksmap = LookupTable{[0] = "no-quirks", "quirks", "limited-quirks"}
-local create_node
+local constructors
 
 local function get_attributes(attrs)
     local length = attrs.length
@@ -80,36 +81,21 @@ local function get_tag_name(element)
     end
 end
 
-local function add_children(parent, children)
+local function add_children(parent, children, start, depth)
     local length = children.length
-    if length > 0 then
-        local childNodes = createtable(length, 0)
-        for i = 0, length - 1 do
-            local node = create_node(cast("GumboNode*", children.data[i]))
-            node.parentNode = parent
-            childNodes[i+1] = node
-        end
-        parent.childNodes = setmetatable(childNodes, NodeList)
+    assert(depth < 800, "Tree depth limit of 800 exceeded")
+    local childNodes = createtable(length, 0)
+    for i = 0, length - 1 do
+        local node = cast("GumboNode*", children.data[i])
+        local construct = constructors[tonumber(node.type)]
+        local t = construct(node, depth + 1)
+        t.parentNode = parent
+        childNodes[i+start] = t
     end
+    parent.childNodes = setmetatable(childNodes, NodeList)
 end
 
-local function create_document(node)
-    local document = node.v.document
-    local t = {
-        quirksMode = quirksmap[tonumber(document.doc_type_quirks_mode)]
-    }
-    if document.has_doctype then
-        t.doctype = {
-            name = cstring(document.name),
-            publicId = cstring(document.public_identifier),
-            systemId = cstring(document.system_identifier)
-        }
-    end
-    add_children(t, document.children)
-    return setmetatable(t, Document)
-end
-
-local function create_element(node)
+local function create_element(node, depth)
     local element = node.v.element
     local t = {
         localName = get_tag_name(element),
@@ -125,7 +111,7 @@ local function create_element(node)
     if parseFlags ~= 0 then
         t.parseFlags = parseFlags
     end
-    add_children(t, element.children)
+    add_children(t, element.children, 1, depth)
     return setmetatable(t, Element)
 end
 
@@ -161,7 +147,7 @@ local function create_comment(node)
     return setmetatable(n, Comment)
 end
 
-local typemap = LookupTable {
+constructors = LookupTable {
     create_element,
     create_text,
     create_cdata,
@@ -169,21 +155,29 @@ local typemap = LookupTable {
     create_whitespace,
 }
 
-create_node = function(node)
-    return typemap[tonumber(node.type)](node)
-end
-
 local function parse(input, tab_stop)
     assert(type(input) == "string")
     assert(type(tab_stop) == "number" or tab_stop == nil)
     local options = new("GumboOptions", C.kGumboDefaultOptions)
     options.tab_stop = tab_stop or 8
     local output = C.gumbo_parse_with_options(options, input, #input)
-    local document = create_document(output.document)
-    local rootIndex = tonumber(output.root.index_within_parent) + 1
-    document.documentElement = document.childNodes[rootIndex]
+    local document = output.document.v.document
+    local t = {
+        quirksMode = quirksmap[tonumber(document.doc_type_quirks_mode)]
+    }
+    if document.has_doctype then
+        local doctype = {
+            name = cstring(document.name),
+            publicId = cstring(document.public_identifier),
+            systemId = cstring(document.system_identifier)
+        }
+        add_children(t, document.children, 2, 0)
+        t.childNodes[1] = setmetatable(doctype, DocumentType)
+    else
+        add_children(t, document.children, 1, 0)
+    end
     C.gumbo_destroy_output(options, output)
-    return document
+    return setmetatable(t, Document)
 end
 
 return parse

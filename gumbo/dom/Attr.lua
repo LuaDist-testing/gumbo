@@ -1,27 +1,20 @@
+local util = require "gumbo.dom.util"
 local _ENV = nil
-local getters = {}
+
+-- TODO: Implement namespaceURI and ownerElement properties
 
 local Attr = {
-    specified = true
+    specified = true,
+    getters = {}
 }
 
-function Attr:__index(k)
-    local field = Attr[k]
-    if field then
-        return field
-    else
-        local getter = getters[k]
-        if getter then
-            return getter(self)
-        end
-    end
-end
+Attr.__index = util.indexFactory(Attr)
 
-function getters:localName()
+function Attr.getters:localName()
     return self.name
 end
 
-function getters:textContent()
+function Attr.getters:textContent()
     return self.value
 end
 
@@ -30,8 +23,8 @@ local escmap = {
     ['"'] = "&quot;"
 }
 
-function getters:escapedValue()
-    return (self.value:gsub('[&"]', escmap):gsub("\xC2\xA0", "&nbsp;"))
+function Attr.getters:escapedValue()
+    return (self.value:gsub('[&"]', escmap):gsub("\194\160", "&nbsp;"))
 end
 
 return Attr
