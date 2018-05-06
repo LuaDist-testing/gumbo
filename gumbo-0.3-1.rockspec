@@ -1,7 +1,7 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "gumbo"
-version = "0.2-1"
+version = "0.3-1"
 supported_platforms = {"unix"}
 
 description = {
@@ -12,13 +12,13 @@ description = {
 
 -- LuaDist source
 source = {
-  tag = "0.2-1",
+  tag = "0.3-1",
   url = "git://github.com/LuaDist-testing/gumbo.git"
 }
 -- Original source
 -- source = {
---     url = "git://github.com/craigbarnes/lua-gumbo.git",
---     tag = "0.2"
+--     url = "https://github.com/craigbarnes/lua-gumbo/releases/download/0.3/lua-gumbo-0.3.tar.gz",
+--     md5 = 'be902b1533402b1eb45908e9a5bcda2e'
 -- }
 
 dependencies = {

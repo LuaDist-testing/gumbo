@@ -1,25 +1,37 @@
+# Lua pkg-config utilities for GNU Make.
+# Copyright (c) 2013-2015, Craig Barnes.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+# SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+# OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+# CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 -include local.mk
 
-CC         = gcc
+CC        ?= gcc
 LDFLAGS   ?= $(if $(ISDARWIN), -bundle -undefined dynamic_lookup, -shared)
-XLDFLAGS  += $(if $(ISUBUNTU), $(NOASNEEDED))
+XLDFLAGS  += $(if $(ISLINUX), $(NOASNEEDED))
 NOASNEEDED = -Wl,--no-as-needed
 PKGCONFIG ?= pkg-config --silence-errors 2>/dev/null
-EQUAL      = $(and $(findstring $(1),$(2)),$(findstring $(2),$(1)))
 MKDIR     ?= mkdir -p
 INSTALL   ?= install -p -m 0644
 INSTALLX  ?= install -p -m 0755
 RM        ?= rm -f
-LUA_NAMES  = lua52 lua5.2 lua-5.2 lua51 lua5.1 lua-5.1 lua luajit
-LUA_FOUND  = $(firstword $(shell which $(_LUA_PC) $(LUA_NAMES) 2>/dev/null))
-LUA       ?= $(or $(LUA_FOUND), $(error No Lua interpreter found))
-PC_EXISTS  = $(shell $(PKGCONFIG) --exists '$(1)' && echo 1)
-USE_IF     = $(if $(call $(1), $(2) $(3)), $(2))
+LUA       ?= $(or $(LUA_WHICH), $(error No Lua interpreter found))
+
+PC_EXISTS  = $(PKGCONFIG) --exists $(1) && echo $(1)
+FIND_PC    = $(shell for P in $(1); do $(call PC_EXISTS, $$P) && break; done)
+EQUAL      = $(and $(findstring $(1),$(2)),$(findstring $(2),$(1)))
 UNAME      = $(shell uname)
-RELEASEID  = $(shell awk '/^ID=/ {print substr($$0, 4)}' /etc/os-release)
 ISDARWIN   = $(call EQUAL, $(UNAME), Darwin)
 ISLINUX    = $(call EQUAL, $(UNAME), Linux)
-ISUBUNTU   = $(and $(ISLINUX), $(call EQUAL, $(RELEASEID), ubuntu))
 
 CCOPTIONS  = $(XCFLAGS) $(CPPFLAGS) $(CFLAGS)
 LDOPTIONS  = $(XLDFLAGS) $(LDFLAGS) $(LDLIBS)
@@ -29,22 +41,18 @@ LDOPTIONS  = $(XLDFLAGS) $(LDFLAGS) $(LDLIBS)
 # - Debian uses lua5.2.pc and lua5.1.pc
 # - OpenBSD ports uses lua52.pc and lua51.pc
 # - FreeBSD uses lua-5.2.pc and lua-5.1.pc
+LUA_NAMES = lua52 lua5.2 lua-5.2 lua51 lua5.1 lua-5.1 lua luajit
+LUA_WHICH = $(firstword $(shell which $(_LUA_PC) $(LUA_NAMES) 2>/dev/null))
+
 LUA_PC ?= $(or \
-    $(call USE_IF, PC_EXISTS, lua, >= 5.1), \
-    $(call USE_IF, PC_EXISTS, lua52), \
-    $(call USE_IF, PC_EXISTS, lua5.2), \
-    $(call USE_IF, PC_EXISTS, lua-5.2), \
-    $(call USE_IF, PC_EXISTS, lua51), \
-    $(call USE_IF, PC_EXISTS, lua5.1), \
-    $(call USE_IF, PC_EXISTS, lua-5.1), \
-    $(call USE_IF, PC_EXISTS, luajit, >= 2.0), \
+    $(call FIND_PC, $(LUA_NAMES)), \
     $(error No pkg-config file found for Lua) \
 )
 
 # The $(LUA_PC) variable may be set to a non-existant name via the
 # command-line, so we must check that it exists (possibly twice).
 _LUA_PC = $(or \
-    $(call USE_IF, PC_EXISTS, $(LUA_PC)), \
+    $(shell $(call PC_EXISTS, $(LUA_PC))), \
     $(error No pkg-config file found with name '$(LUA_PC)') \
 )
 

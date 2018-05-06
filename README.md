@@ -9,12 +9,21 @@ Requirements
 ------------
 
 * C99 compiler
-* [GNU Make]
-* [Lua] 5.1/5.2 or [LuaJIT] 2
-* [Gumbo][Gumbo installation]
+* [GNU Make] `>= 3.81`
+* [Lua] `>= 5.1` **or** [LuaJIT] `>= 2.0`
+* [Gumbo][Gumbo installation] `>= 0.9.2, < 0.10.0`
 
 Installation
 ------------
+
+### Using LuaRocks
+
+To install the latest lua-gumbo release via [LuaRocks], first ensure
+the requirements listed above are installed, then use the command:
+
+    luarocks install gumbo
+
+### Using GNU Make
 
 By default, the Makefile will consult [pkg-config] for the appropriate
 Lua variables. Usually the following commands will be sufficient:
@@ -30,11 +39,11 @@ to be found is used (yes, these all exist in the wild):
 
 If, for example, your system has both `lua.pc` and `luajit.pc` installed
 then `lua.pc` will be used by default. You can override this default
-behavior by specifying the `LUA_PC` and `LUA` variables. To build for
-LuaJIT, in this case, use:
+behavior by specifying the `LUA_PC` variable. To build for LuaJIT, in
+this case, use:
 
     make LUA_PC=luajit
-    make check LUA=luajit
+    make check LUA_PC=luajit
     [sudo] make install LUA_PC=luajit
 
 If your Lua installation doesn't include a pkg-config file,
@@ -45,9 +54,9 @@ relevant variables will have to be specified manually, for example:
     make check
     make install LUA_LMOD_DIR=/usr/share/lua/5.2 LUA_CMOD_DIR=/usr/lib/lua/5.2
 
-For convenience, you can store any of the above variables in a file
-named `local.mk`. The Makefile includes this file for each run and any
-variables declared within take precedence over the defaults.
+**Note:** for convenience, variable overrides can be stored persistently
+in a file named `local.mk`. For example, instead of adding `LUA_PC=luajit`
+to every command, as shown above, it can just be added once to `local.mk`.
 
 Usage
 -----
@@ -101,7 +110,7 @@ local text = foo.childNodes[1].data
 print(text)
 ```
 
-Note: this example omits error handling for the sake of simplicity.
+**Note:** this example omits error handling for the sake of simplicity.
 Production code should wrap each step with `assert()` or some other,
 application-specific error handling.
 
@@ -110,12 +119,12 @@ See also:
 * [find_links.lua](https://github.com/craigbarnes/lua-gumbo/blob/master/examples/find_links.lua)
 * [remove_by_id.lua](https://github.com/craigbarnes/lua-gumbo/blob/master/examples/remove_by_id.lua)
 
-Output
-------
+DOM API
+-------
 
 The `parse` and `parseFile` functions both return a [`Document`] node,
 containing a tree of [descendant] nodes. The structure and API of this
-tree is *almost* a subset of the [DOM] Level 4 Core API, with the
+tree mostly conforms to the [DOM] Level 4 Core specification, with the
 following (intentional) exceptions:
 
 * `DOMString` types are encoded as UTF-8 instead of UTF-16.
@@ -123,28 +132,32 @@ following (intentional) exceptions:
 * `readonly` is not fully enforced.
 
 The following sections list the supported properties and methods,
-grouped by the DOM interface in which the are specified. No
+grouped by the DOM interface in which they are specified. No
 lua-gumbo specific documentation currently exists, but since it's
 an implementation of a standard API, cross-checking the list with
 the [MDN DOM reference] should suffice for now.
 
-*Note:* When referring to external DOM documentation, don't forget to
+**Note:** When referring to external DOM documentation, don't forget to
 translate JavaScript examples to use Lua `object:method()` call syntax.
-
-DOM API
--------
 
 ### `Document`
 
-Inherits from [`Node`]. Implements [`ParentNode`].
+Implements [`Node`] and [`ParentNode`].
 
 * [`documentElement`](https://developer.mozilla.org/en-US/docs/Web/API/document.documentElement)
+* [`head`](https://developer.mozilla.org/en-US/docs/Web/API/Document.head)
+* [`body`](https://developer.mozilla.org/en-US/docs/Web/API/Document.body)
+* [`title`](https://developer.mozilla.org/en-US/docs/Web/API/Document.title)
+* [`forms`](https://developer.mozilla.org/en-US/docs/Web/API/Document.forms)
+* [`images`](https://developer.mozilla.org/en-US/docs/Web/API/Document.images)
+* [`links`](https://developer.mozilla.org/en-US/docs/Web/API/Document.links)
+* [`scripts`](https://developer.mozilla.org/en-US/docs/Web/API/Document.scripts)
 * [`doctype`](#documenttype)
-* `URL`
-* `documentURI`
+* [`URL`](https://developer.mozilla.org/en-US/docs/Web/API/Document.URL)
+* [`documentURI`](https://developer.mozilla.org/en-US/docs/Web/API/document.documentURI)
 * [`compatMode`](https://developer.mozilla.org/en-US/docs/Web/API/document.compatMode)
-* `characterSet`
-* `contentType`
+* [`characterSet`](https://developer.mozilla.org/en-US/docs/Web/API/document.characterSet)
+* [`contentType`](https://developer.mozilla.org/en-US/docs/Web/API/document.contentType)
 * [`getElementById()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.getElementById)
 * [`getElementsByTagName()`](https://developer.mozilla.org/en-US/docs/Web/API/document.getElementsByTagName)
 * [`getElementsByClassName()`](https://developer.mozilla.org/en-US/docs/Web/API/Document.getElementsByClassName)
@@ -155,13 +168,11 @@ Inherits from [`Node`]. Implements [`ParentNode`].
 
 ### `Element`
 
-Inherits from [`Node`]. Implements [`ParentNode`], [`ChildNode`] and
+Implements [`Node`], [`ParentNode`], [`ChildNode`] and
 [`NonDocumentTypeChildNode`].
 
 * `localName`
 * [`attributes`](https://developer.mozilla.org/en-US/docs/Web/API/Element.attributes)
-  * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/NamedNodeMap#Properties)
-  * [`item()`](https://developer.mozilla.org/en-US/docs/Web/API/NamedNodeMap#Methods)
 * `namespaceURI`
 * [`tagName`](https://developer.mozilla.org/en-US/docs/Web/API/Element.tagName)
 * [`id`](https://developer.mozilla.org/en-US/docs/Web/API/Element.id)
@@ -183,25 +194,29 @@ Inherits from [`Node`]. Implements [`ParentNode`], [`ChildNode`] and
 
 ### `Text`
 
-Inherits from [`CharacterData`].
-
-### `Comment`
-
-Inherits from [`CharacterData`].
-
-### `CharacterData`
-
-Inherits from [`Node`]. Implements [`ChildNode`] and
-[`NonDocumentTypeChildNode`].
+Implements [`Node`], [`ChildNode`] and [`NonDocumentTypeChildNode`].
 
 * [`data`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
 * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
 
+### `Comment`
+
+Implements [`Node`], [`ChildNode`] and [`NonDocumentTypeChildNode`].
+
+* [`data`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
+* [`length`](https://developer.mozilla.org/en-US/docs/Web/API/CharacterData#Properties)
+
+### `DocumentType`
+
+Implements [`Node`] and [`ChildNode`].
+
+* `name`
+* `publicId`
+* `systemId`
+
 ### `Node`
 
 * [`childNodes`](https://developer.mozilla.org/en-US/docs/Web/API/Node.childNodes)
-  * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/NodeList#Properties)
-  * [`item()`](https://developer.mozilla.org/en-US/docs/Web/API/NodeList#Methods)
 * [`parentNode`](https://developer.mozilla.org/en-US/docs/Web/API/Node.parentNode)
 * [`parentElement`](https://developer.mozilla.org/en-US/docs/Web/API/Node.parentElement)
 * [`ownerDocument`](https://developer.mozilla.org/en-US/docs/Web/API/Node.ownerDocument)
@@ -212,8 +227,7 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * [`previousSibling`](https://developer.mozilla.org/en-US/docs/Web/API/Node.previousSibling)
 * [`nextSibling`](https://developer.mozilla.org/en-US/docs/Web/API/Node.nextSibling)
 * [`nodeValue`](https://developer.mozilla.org/en-US/docs/Web/API/Node.nodeValue)
-   * [x] `getter`
-   * [ ] `setter`
+* [`textContent`](https://developer.mozilla.org/en-US/docs/Web/API/Node.textContent)
 * `ELEMENT_NODE`
 * `TEXT_NODE`
 * `COMMENT_NODE`
@@ -226,13 +240,16 @@ Inherits from [`Node`]. Implements [`ChildNode`] and
 * [`insertBefore()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.insertBefore)
 * [`removeChild()`](https://developer.mozilla.org/en-US/docs/Web/API/Node.removeChild)
 
-### `DocumentType`
+### `ParentNode`
 
-Inherits from [`Node`]. Implements [`ChildNode`].
+* [`children`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.children)
+* [`childElementCount`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.childElementCount)
+* [`firstElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.firstElementChild)
+* [`lastElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.lastElementChild)
 
-* `name`
-* `publicId`
-* `systemId`
+### `ChildNode`
+
+* [`remove()`](https://developer.mozilla.org/en-US/docs/Web/API/ChildNode.remove)
 
 ### `Attr`
 
@@ -242,34 +259,34 @@ Inherits from [`Node`]. Implements [`ChildNode`].
 * `localName`
 * [`specified`](https://developer.mozilla.org/en-US/docs/Web/API/Attr#Properties)
 
-### `ParentNode`
+Not Implemented
+---------------
 
-* [`children`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.children)
-  * [`length`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCollection#Properties)
-  * [`item()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCollection#Methods)
-  * [`namedItem()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCollection#Methods)
-* [`childElementCount`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.childElementCount)
-* [`firstElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.firstElementChild)
-* [`lastElementChild`](https://developer.mozilla.org/en-US/docs/Web/API/ParentNode.lastElementChild)
+The following methods from the `CharacterData` interface are
+intentionally omitted:
 
-### `ChildNode`
+* `substringData()`
+* `appendData()`
+* `insertData()`
+* `deleteData()`
+* `replaceData()`
 
-* [`remove()`](https://developer.mozilla.org/en-US/docs/Web/API/ChildNode.remove)
+The specification for these methods has numerous flaws, assumes UTF-16
+encoding and 0-based offsets and is just unnecessarily complex for the
+trivial amount of utility provided. A better alternative is to just
+manipulate the `data` property directly.
 
 Testing
 -------
+
+[![Build Status](https://travis-ci.org/craigbarnes/lua-gumbo.png?branch=master)](https://travis-ci.org/craigbarnes/lua-gumbo)
 
 * `make check`: Runs all unit tests.
 * `make check-html5lib`: Runs just the html5lib [tree-construction tests].
 * `make check-install`: Runs `make check` within a temporary, isolated
   installation, to ensure all modules are installed correctly.
 * `make coverage.txt`: Generates a test coverage report with [luacov].
-* `make bench-parse BENCHFILE=test/data/${size}MiB.html`: Parses an
-  automatically generated document of `${size}` MiB, then prints CPU time
-  and memory usage stats.
-* `make git-hooks`: Installs some git hooks to disallow commits with
-  failing tests or a commit message longer than 72 columns.
-* `make todo`: Lists all `TODO:` comments found in the code.
+* `make git-hooks`: Adds a git hook to disallow commits with failing tests.
 
 [License]
 ---------
@@ -299,7 +316,6 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [descendant]: https://dom.spec.whatwg.org/#concept-tree-descendant
 [`Document`]: #document
 [`Element`]: #element
-[`CharacterData`]: #characterdata
 [`Attr`]: #attr
 [`Node`]: #node
 [`ParentNode`]: #parentnode
@@ -308,9 +324,9 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [Gumbo]: https://github.com/google/gumbo-parser
 [Gumbo installation]: https://github.com/google/gumbo-parser#installation
 [GNU Make]: https://www.gnu.org/software/make/
+[LuaRocks]: http://luarocks.org/
 [pkg-config]: https://en.wikipedia.org/wiki/Pkg-config
 [file handle]: http://www.lua.org/manual/5.2/manual.html#6.8
 [tree-construction tests]: https://github.com/html5lib/html5lib-tests/tree/master/tree-construction
 [MDN DOM reference]: https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model#DOM_interfaces
 [luacov]: https://keplerproject.github.io/luacov/
-[Hunspell]: https://en.wikipedia.org/wiki/Hunspell

@@ -1,14 +1,17 @@
 local open, write, ipairs, loadfile = io.open, io.write, ipairs, loadfile
-local xpcall, assert, tonumber, exit = xpcall, assert, tonumber, os.exit
+local xpcall, tonumber, exit = xpcall, tonumber, os.exit
 local yield, wrap = coroutine.yield, coroutine.wrap
-local debuginfo, traceback = debug.getinfo, debug.traceback
+local traceback = debug.traceback
 local _ENV = nil
 
 local tests = {
     "test/dom/interfaces.lua",
     "test/dom/HTMLCollection-empty-name.lua",
-    "test/dom/getElementsByClassName-01.lua",
-    "test/dom/getElementsByClassName-02.lua",
+    "test/dom/getElementsByTagName.lua",
+    "test/dom/getElementsByClassName.lua",
+    "test/dom/Document-title.lua",
+    "test/dom/DocumentType.lua",
+    "test/dom/Element-classList.lua",
     "test/dom/Element-getElementsByClassName.lua",
     "test/dom/Element-remove.lua",
     "test/dom/Element-childElementCount.lua",
@@ -16,32 +19,33 @@ local tests = {
     "test/dom/Node-appendChild.lua",
     "test/dom/Node-insertBefore.lua",
     "test/dom/Node-constants.lua",
+    "test/dom/Node-nodeValue.lua",
     "test/dom/outerHTML.lua",
+    "test/Set.lua",
     "test/misc.lua",
     "test/tostring.lua",
     "test/tree-construction.lua",
 }
 
-local function handler(err)
-    local filename, linenumber = err:match("^(.*):([0-9]+): ")
-    if not filename then return err end
-    linenumber = assert(tonumber(linenumber))
-    local level, info = 2
-    while true do
-        level = level + 1
-        info = debuginfo(level, "Sl")
-        if not info then return err end
-        if info.short_src == filename and info.currentline == linenumber then
-            break
-        end
-    end
+local function getline(filename, linenumber)
     local file = open(filename)
-    if not file then return err end
-    local line
-    for i = 1, linenumber do
-        line = file:read()
-        if not line then return err end
+    if not file then
+        return nil
     end
+    for i = 1, linenumber - 1 do
+        file:read()
+    end
+    local line = file:read()
+    file:close()
+    return line
+end
+
+local function handler(err)
+    if not err then return traceback("Unknown error") end
+    local filename, linenumber = err:match("^(.*):([0-9]+): ")
+    if not filename then return traceback(err) end
+    local line = getline(filename, tonumber(linenumber))
+    if not line then return traceback(err) end
     local s = "%s\n   --->  \27[33m%s\27[0m\n     %s"
     return s:format(err, line:match("^%s*(.-)%s*$"), traceback())
 end

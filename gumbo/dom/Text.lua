@@ -1,17 +1,17 @@
 local util = require "gumbo.dom.util"
-local assertions = require "gumbo.dom.assertions"
-local assertTextNode = assertions.assertTextNode
-local assertNilableString = assertions.assertNilableString
+local Node = require "gumbo.dom.Node"
+local ChildNode = require "gumbo.dom.ChildNode"
+local assertTextNode = util.assertTextNode
+local assertNilableString = util.assertNilableString
 local setmetatable = setmetatable
 local _ENV = nil
 
-local Text = util.merge("CharacterData", {
+local Text = util.merge(Node, ChildNode, {
     type = "text",
     nodeName = "#text",
-    nodeType = 3
+    nodeType = 3,
+    data = ""
 })
-
-Text.__index = util.indexFactory(Text)
 
 function Text:__tostring()
     assertTextNode(self)
@@ -23,8 +23,9 @@ function Text:cloneNode()
     return setmetatable({data = self.data}, Text)
 end
 
--- TODO: function Text:splitText(offset)
--- TODO: function Text.getters:wholeText()
+function Text.getters:length()
+    return #self.data
+end
 
 local escmap = {
     ["&"] = "&amp;",

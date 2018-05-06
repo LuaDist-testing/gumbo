@@ -16,18 +16,17 @@
 */
 
 #include <stddef.h>
-#include <stdint.h>
+#include <stdlib.h>
 #include <lua.h>
 #include <lauxlib.h>
+#include <gumbo.h>
 #include "compat.h"
 
 #ifdef AMALGAMATE
 # include "amalg.h"
-#else
-# include <gumbo.h>
 #endif
 
-typedef uint_fast16_t uint16;
+typedef unsigned int uint;
 
 static const char attrnsmap[][6] = {"none", "xlink", "xml", "xmlns"};
 static const char quirksmap[][15] = {"no-quirks", "quirks", "limited-quirks"};
@@ -66,6 +65,15 @@ static const char *const modules[] = {
 #define add_integer(L, k, v) add_field(integer, L, k, v)
 #define add_value(L, k, v) add_field(value, L, k, (v) < 0 ? (v) - 1 : (v))
 
+static void *xmalloc(void *userdata, size_t size) {
+    (void)userdata;
+    void *ptr = malloc(size);
+    if (ptr == NULL) {
+        abort();
+    }
+    return ptr;
+}
+
 static inline void setmetatable(lua_State *L, Upvalue index) {
     lua_pushvalue(L, lua_upvalueindex(index));
     lua_setmetatable(L, -2);
@@ -97,7 +105,7 @@ static void add_attributes(lua_State *L, const GumboVector *attrs) {
             lua_pushvalue(L, -1);
             lua_setfield(L, -3, attr->name);
             setmetatable(L, Attr);
-            lua_rawseti(L, -2, i+1);
+            lua_rawseti(L, -2, i + 1);
         }
         setmetatable(L, NamedNodeMap);
         lua_setfield(L, -2, "attributes");
@@ -106,7 +114,7 @@ static void add_attributes(lua_State *L, const GumboVector *attrs) {
 
 static void add_tag(lua_State *L, const GumboElement *element) {
     if (element->tag_namespace == GUMBO_NAMESPACE_SVG) {
-        add_literal(L, "namespaceURI", "http://www.w3.org/2000/svg");
+        add_literal(L, "namespace", "svg");
         GumboStringPiece original_tag = element->original_tag;
         gumbo_tag_from_original_text(&original_tag);
         const char *normalized = gumbo_normalize_svg_tagname(&original_tag);
@@ -115,7 +123,7 @@ static void add_tag(lua_State *L, const GumboElement *element) {
             return;
         }
     } else if (element->tag_namespace == GUMBO_NAMESPACE_MATHML) {
-        add_literal(L, "namespaceURI", "http://www.w3.org/1998/Math/MathML");
+        add_literal(L, "namespace", "math");
     }
     if (element->tag == GUMBO_TAG_UNKNOWN) {
         GumboStringPiece original_tag = element->original_tag;
@@ -141,14 +149,10 @@ static void create_text_node(lua_State *L, const GumboText *t, Upvalue i) {
 }
 
 // Forward declaration, to allow mutual recursion with add_children()
-static void push_node(lua_State *L, const GumboNode *node, uint16 depth);
+static void push_node(lua_State *L, const GumboNode *node, uint depth);
 
-static inline void add_children (
-    lua_State *L,
-    const GumboVector *vec,
-    const uint16 start,
-    const uint16 depth
-){
+static void
+add_children(lua_State *L, const GumboVector *vec, uint start, uint depth) {
     const unsigned int length = vec->length;
     if (depth >= 800) luaL_error(L, "Tree depth limit of 800 exceeded");
     lua_createtable(L, length, 0);
@@ -161,7 +165,7 @@ static inline void add_children (
     lua_setfield(L, -2, "childNodes");
 }
 
-static void push_node(lua_State *L, const GumboNode *node, uint16 depth) {
+static void push_node(lua_State *L, const GumboNode *node, uint depth) {
     luaL_checkstack(L, 10, "Unable to allocate Lua stack space");
     switch (node->type) {
     case GUMBO_NODE_ELEMENT: {
@@ -202,7 +206,8 @@ static int parse(lua_State *L) {
     size_t length;
     const char *input = luaL_checklstring(L, 1, &length);
     GumboOptions options = kGumboDefaultOptions;
-    options.tab_stop = (int) luaL_optinteger(L, 2, 8);
+    options.tab_stop = (int)luaL_optinteger(L, 2, 8);
+    options.allocator = xmalloc;
     GumboOutput *output = gumbo_parse_with_options(&options, input, length);
     if (output) {
         const GumboDocument *document = &output->document->v.document;

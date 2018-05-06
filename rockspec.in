@@ -9,8 +9,8 @@ description = {
 }
 
 source = {
-    url = "git://github.com/craigbarnes/lua-gumbo.git",
-    tag = "%VERSION%"
+    url = "%URL%",
+    %SRCX%
 }
 
 dependencies = {

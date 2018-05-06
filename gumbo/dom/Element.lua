@@ -1,29 +1,34 @@
 local util = require "gumbo.dom.util"
-local Buffer = require "gumbo.Buffer"
-local Set = require "gumbo.Set"
+local Node = require "gumbo.dom.Node"
+local ChildNode = require "gumbo.dom.ChildNode"
+local ParentNode = require "gumbo.dom.ParentNode"
 local NamedNodeMap = require "gumbo.dom.NamedNodeMap"
 local Attr = require "gumbo.dom.Attr"
 local HTMLCollection = require "gumbo.dom.HTMLCollection"
-local assertions = require "gumbo.dom.assertions"
-local assertElement = assertions.assertElement
-local assertNode = assertions.assertNode
-local assertName = assertions.assertName
-local assertString = assertions.assertString
-local NYI = assertions.NYI
+local DOMTokenList = require "gumbo.dom.DOMTokenList"
+local Buffer = require "gumbo.Buffer"
+local Set = require "gumbo.Set"
+local constants = require "gumbo.constants"
+local namespaces = constants.namespaces
+local voidElements = constants.voidElements
+local rcdataElements = constants.rcdataElements
+local booleanAttributes = constants.booleanAttributes
+local assertElement = util.assertElement
+local assertNode = util.assertNode
+local assertName = util.assertName
+local assertString = util.assertString
+local NYI = util.NYI
 local type, ipairs = type, ipairs
-local tremove, rawset, setmetatable = table.remove, rawset, setmetatable
+local tremove, setmetatable = table.remove, setmetatable
 local _ENV = nil
 
-local Element = util.merge("Node", "ChildNode", "ParentNode", {
+local Element = util.merge(Node, ChildNode, ParentNode, {
     type = "element",
     nodeType = 1,
-    namespaceURI = "http://www.w3.org/1999/xhtml",
+    namespace = "html",
     attributes = setmetatable({length = 0}, NamedNodeMap),
-    readonly = Set{"tagName", "classList"}
+    readonly = Set{"classList", "namespaceURI", "tagName"}
 })
-
-Element.__index = util.indexFactory(Element)
-Element.__newindex = util.newindexFactory(Element)
 
 function Element:__tostring()
     assertElement(self)
@@ -64,21 +69,29 @@ function Element:getElementsByTagName(localName)
     return setmetatable(collection, HTMLCollection)
 end
 
+local function getClassList(class)
+    local list = {}
+    local length = 0
+    if class then
+        for s in class:gmatch "%S+" do
+            if not list[s] then
+                length = length + 1
+                list[length] = s
+                list[s] = length
+            end
+        end
+    end
+    list.length = length
+    return list
+end
+
 function Element:getElementsByClassName(classNames)
     --TODO: should use assertElement(self), but method is shared with Document
     assertNode(self)
     assertString(classNames)
-    local classes = {}
+    local classes = getClassList(classNames)
     local collection = {}
     local length = 0
-    do
-        local length = 0
-        for class in classNames:gmatch("%S+") do
-            length = length + 1
-            classes[length] = class
-        end
-        classes.length = length
-    end
     for node in self:walk() do
         if node.type == "element" then
             local classList = node.classList
@@ -103,7 +116,7 @@ function Element:getAttribute(name)
     if type(name) == "string" then
         -- If the context object is in the HTML namespace and its node document
         -- is an HTML document, let name be converted to ASCII lowercase.
-        if self.namespaceURI == "http://www.w3.org/1999/xhtml" then
+        if self.namespace == "html" then
             name = name:lower()
         end
         -- Return the value of the first attribute in the context object's
@@ -162,7 +175,7 @@ function Element:cloneNode(deep)
     if deep then NYI() end -- << TODO
     local clone = {
         localName = self.localName,
-        namespaceURI = self.namespaceURI,
+        namespace = self.namespace,
         prefix = self.prefix
     }
     if self:hasAttributes() then
@@ -190,9 +203,13 @@ end
 -- TODO: function Element.matches(selectors)
 -- TODO: function Element.getElementsByTagNameNS(namespace, localName)
 
+function Element.getters:namespaceURI()
+    return namespaces[self.namespace]
+end
+
 -- TODO: implement all cases from http://www.w3.org/TR/dom/#dom-element-tagname
 function Element.getters:tagName()
-    if self.namespaceURI == "http://www.w3.org/1999/xhtml" then
+    if self.namespace == "html" then
         return self.localName:upper()
     else
         return self.localName
@@ -202,55 +219,25 @@ end
 Element.getters.nodeName = Element.getters.tagName
 
 function Element.getters:classList()
-    local class = self.attributes.class
-    local list = {}
-    local length = 0
-    if class then
-        for s in class.value:gmatch "%S+" do
-            length = length + 1
-            list[length] = s
-            list[s] = length
-        end
-    end
-    list.length = length
-    return list
-end
-
-local void = Set {
-    "area", "base", "basefont", "bgsound", "br", "col", "embed",
-    "frame", "hr", "img", "input", "keygen", "link", "menuitem", "meta",
-    "param", "source", "track", "wbr"
-}
-
-local raw = Set {
-    "style", "script", "xmp", "iframe", "noembed", "noframes",
-    "plaintext"
-}
-
-local boolattr = Set {
-    "allowfullscreen", "async", "autofocus", "autoplay", "checked",
-    "compact", "controls", "declare", "default", "defer", "disabled",
-    "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop",
-    "multiple", "multiple", "muted", "nohref", "noresize", "noshade",
-    "novalidate", "nowrap", "open", "readonly", "required", "reversed",
-    "scoped", "seamless", "selected", "sortable", "truespeed",
-    "typemustmatch"
-}
-
-function Element.getters:isRaw()
-    return raw[self.localName]
-end
-
-function Element.getters:isVoid()
-    return void[self.localName]
+    return setmetatable(getClassList(self.className), DOMTokenList)
 end
 
 local function serialize(node, buf)
     local type = node.type
     if type == "element" then
         local tag = node.localName
-        buf:write(node.tagHTML)
-        if not void[tag] then
+        buf:write("<", tag)
+        for i, attr in ipairs(node.attributes) do
+            local ns, name = attr.prefix, attr.name
+            if ns and not (ns == "xmlns" and name == "xmlns") then
+                buf:write(" ", ns, ":", name)
+            else
+                buf:write(" ", name)
+            end
+            buf:write('="', attr.escapedValue, '"')
+        end
+        buf:write(">")
+        if not voidElements[tag] then
             local children = node.childNodes
             for i = 1, #children do
                 serialize(children[i], buf)
@@ -258,7 +245,7 @@ local function serialize(node, buf)
             buf:write("</", tag, ">")
         end
     elseif type == "text" then
-        if raw[node.parentNode.localName] then
+        if rcdataElements[node.parentNode.localName] then
             buf:write(node.data)
         else
             buf:write(node.escapedData)
@@ -286,7 +273,8 @@ end
 
 function Element.getters:tagHTML()
     local buffer = Buffer()
-    buffer:write("<", self.localName)
+    local tag = self.localName
+    buffer:write("<", tag)
     for i, attr in ipairs(self.attributes) do
         local ns, name, val = attr.prefix, attr.name, attr.value
         if ns and not (ns == "xmlns" and name == "xmlns") then
@@ -294,7 +282,9 @@ function Element.getters:tagHTML()
         else
             buffer:write(" ", name)
         end
-        if not boolattr[name] or not (val == "" or val == name) then
+        local bset = booleanAttributes[tag]
+        local boolattr = (bset and bset[name]) or booleanAttributes[""][name]
+        if not boolattr or not (val == "" or val == name) then
             buffer:write('="', attr.escapedValue, '"')
         end
     end

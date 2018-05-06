@@ -1,7 +1,9 @@
+local util = require "gumbo.dom.util"
 local NodeList = require "gumbo.dom.NodeList"
+local Buffer = require "gumbo.Buffer"
 local Set = require "gumbo.Set"
-local assertions = require "gumbo.dom.assertions"
-local assertNode = assertions.assertNode
+local assertNode = util.assertNode
+local assertNilableString = util.assertNilableString
 local yield, wrap = coroutine.yield, coroutine.wrap
 local tinsert, tremove = table.insert, table.remove
 local ipairs, type, error, assert = ipairs, type, error, assert
@@ -48,6 +50,17 @@ local Node = {
 local isTextOrComment = Set {
     Node.TEXT_NODE,
     Node.COMMENT_NODE
+}
+
+local isCharacterData = Set {
+    Node.TEXT_NODE,
+    Node.COMMENT_NODE,
+    Node.PROCESSING_INSTRUCTION_NODE
+}
+
+local isElementOrDocumentFragment = Set {
+    Node.DOCUMENT_FRAGMENT_NODE,
+    Node.ELEMENT_NODE
 }
 
 local isValidParent = Set {
@@ -105,13 +118,11 @@ function Node:hasChildNodes()
     return self.childNodes[1] and true or false
 end
 
-local comparators = {}
-
-comparators[Node.ELEMENT_NODE] = function(self, other)
+local function isEqualElement(self, other)
     local selfAttrs = self.attributes
     local otherAttrs = other.attributes
     if
-        self.namespaceURI ~= other.namespaceURI
+        self.namespace ~= other.namespace
         -- TODO: namespace prefix
         or self.localName ~= other.localName
         or selfAttrs.length ~= otherAttrs.length
@@ -131,18 +142,23 @@ comparators[Node.ELEMENT_NODE] = function(self, other)
     return true
 end
 
-comparators[Node.DOCUMENT_TYPE_NODE] = function(self, other)
+local function isEqualDoctype(self, other)
     return
         self.name == other.name
         and self.publicID == other.publicID
         and self.systemID == other.systemID
 end
 
-comparators[Node.TEXT_NODE] = function(self, other)
+local function isEqualText(self, other)
     return other.data == self.data
 end
 
-comparators[Node.COMMENT_NODE] = comparators[Node.TEXT_NODE]
+local comparators = {
+    [Node.ELEMENT_NODE] = isEqualElement,
+    [Node.DOCUMENT_TYPE_NODE] = isEqualDoctype,
+    [Node.TEXT_NODE] = isEqualText,
+    [Node.COMMENT_NODE] = isEqualText
+}
 
 -- https://dom.spec.whatwg.org/#dom-node-isequalnode
 function Node:isEqualNode(other)
@@ -177,7 +193,6 @@ function Node:isEqualNode(other)
     return true
 end
 
--- TODO: Node.textContent
 -- TODO: function Node:cloneNode(deep)
 
 -- TODO: Node.baseURI
@@ -199,67 +214,36 @@ end
 
 -- https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
 local function ensurePreInsertionValidity(node, parent, child)
-    -- 1. If parent is not a Document, DocumentFragment, or Element
-    --    node, throw a HierarchyRequestError.
     assert(isValidParent[parent.nodeType] == true, "HierarchyRequestError")
-
-    -- 2. If node is a host-including inclusive ancestor of parent,
-    --    throw a HierarchyRequestError.
     assert(parent ~= node, "HierarchyRequestError")
     assert(node:contains(parent) == false, "HierarchyRequestError")
-
-    -- 3. If child is not null and its parent is not parent, throw a
-    --    NotFoundError exception.
     assert(child == nil or child.parentNode == parent, "NotFoundError")
-
-    -- 4. If node is not a DocumentFragment, DocumentType, Element,
-    --    Text, ProcessingInstruction, or Comment node, throw a
-    --    HierarchyRequestError.
     assert(isValidChild[node.nodeType] == true, "HierarchyRequestError")
 
-    -- 5. If either node is a Text node and parent is a document, or
-    --    node is a doctype and parent is not a document, throw a
-    --    HierarchyRequestError.
     if parent.type == "document" then
         assert(node.nodeName ~= "#text", "HierarchyRequestError")
     else
         assert(node.type ~= "doctype", "HierarchyRequestError")
     end
 
-    -- 6. If parent is a document ...
     if parent.type == "document" then
-        -- and any of the statements below, switched on node, are true,
-        -- throw a HierarchyRequestError.
-
-        -- TODO: Implement this when DocumentFragment types are supported
-        -- >> DocumentFragment node
-        -- * If node has more than one element child or has a Text node child.
-        -- * Otherwise, if node has one element child and either parent has
-        --   an element child, child is a doctype, or child is not null and
-        --   a doctype is following child.
+        -- TODO: Implement the steps for DocumentFragment nodes, when they
+        --       are supported.
 
         local parentHasElementChild = parent.firstElementChild and true or false
 
-        -- >> element
         if node.type == "element" then
-            -- parent has an element child,
             if parentHasElementChild == true
-            -- child is a doctype,
             or child.type == "doctype"
-            -- or child is not null and a doctype is following child.
-            -- TODO
+            -- TODO: "or child is not null and a doctype is following child"
             then
                 assert(false, "HierarchyRequestError")
             end
         end
 
-        -- >> doctype
         if node.type == "doctype" then
-            -- parent has a doctype child,
             if parent.doctype
-            -- an element is preceding child,
-            -- TODO
-            -- or child is null and parent has an element child.
+            -- TODO: "an element is preceding child"
             or (child == nil and parentHasElementChild == true)
             then
                 assert(false, "HierarchyRequestError")
@@ -270,33 +254,22 @@ end
 
 -- https://dom.spec.whatwg.org/#concept-node-pre-insert
 local function preInsert(node, parent, child)
-    -- 1. Ensure pre-insertion validity of node into parent before child.
     ensurePreInsertionValidity(node, parent, child)
-
-    -- 2. Let reference child be child.
     local referenceChild = child
-
-    -- 3. If reference child is node, set it to node's next sibling.
     if referenceChild == node then
         referenceChild = node.nextSibling
     end
-
-    -- 4. Adopt node into parent's node document.
     parent.ownerDocument:adoptNode(node)
-
-    -- 5. Insert node into parent before reference child.
     -- TODO: Implement https://dom.spec.whatwg.org/#concept-node-insert
+    --       when DocumentFragment support is added.
     local childNodes = assert(parent.childNodes)
-    local index
     if referenceChild == nil then
-        index = childNodes.length + 1
+        childNodes[childNodes.length + 1] = node
     else
-        index = assert(getChildIndex(parent, referenceChild))
+        local index = assert(getChildIndex(parent, referenceChild))
+        tinsert(childNodes, index, node)
     end
-    tinsert(childNodes, index, node)
     node.parentNode = parent
-
-    -- 6. Return node.
     return node
 end
 
@@ -408,7 +381,41 @@ function Node.getters:nodeValue()
     end
 end
 
--- TODO: function Node.setters:nodeValue(value)
+function Node.setters:nodeValue(value)
+    assertNilableString(value)
+    if isTextOrComment[self.nodeType] then
+        self.data = value or ""
+    end
+end
+
+function Node.getters:textContent()
+    local nodeType = self.nodeType
+    if isCharacterData[nodeType] then
+        return self.data
+    elseif isElementOrDocumentFragment[nodeType] then
+        local buffer = Buffer()
+        for node in self:walk() do
+            if node.nodeName == "#text" then
+                buffer:write(node.data)
+            end
+        end
+        return buffer:tostring()
+    end
+end
+
+function Node.setters:textContent(value)
+    assertNilableString(value)
+    local nodeType = self.nodeType
+    if isCharacterData[nodeType] then
+        self.data = value
+    elseif isElementOrDocumentFragment[nodeType] then
+        self.childNodes:removeAll()
+        if value then
+            local node = self.ownerDocument:createTextNode(value)
+            self:appendChild(node)
+        end
+    end
+end
 
 local function hasbit(flags, bit)
     return (flags and flags % (bit * 2) >= bit) and true or false
