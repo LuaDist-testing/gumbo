@@ -6,56 +6,27 @@ local gumbo = require "gumbo"
 local Buffer = require "gumbo.Buffer"
 local Indent = require "gumbo.serialize.Indent"
 local parse = gumbo.parse
-local open, write, ipairs, assert = io.open, io.write, ipairs, assert
-local format, clock, sort, exit = string.format, os.clock, table.sort, os.exit
+local ipairs, assert, sort = ipairs, assert, table.sort
+local open, popen, write = io.open, io.popen, io.write
+local clock, exit = os.clock, os.exit
 local verbose = os.getenv "VERBOSE"
 local _ENV = nil
 local ELEMENT_NODE, TEXT_NODE, COMMENT_NODE = 1, 3, 8
-
-local nsmap = {
-    ["http://www.w3.org/1999/xhtml"] = "",
-    ["http://www.w3.org/1998/Math/MathML"] = "math ",
-    ["http://www.w3.org/2000/svg"] = "svg "
-}
-
-local filenames = {
-    "test/tree-construction/adoption01.dat",
-    "test/tree-construction/adoption02.dat",
-    "test/tree-construction/comments01.dat",
-    "test/tree-construction/doctype01.dat",
-    "test/tree-construction/domjs-unsafe.dat",
-    "test/tree-construction/entities01.dat",
-    "test/tree-construction/entities02.dat",
-    "test/tree-construction/html5test-com.dat",
-    "test/tree-construction/inbody01.dat",
-    "test/tree-construction/isindex.dat",
-    "test/tree-construction/pending-spec-changes.dat",
-    "test/tree-construction/pending-spec-changes-plain-text-unsafe.dat",
-    "test/tree-construction/plain-text-unsafe.dat",
-    "test/tree-construction/scriptdata01.dat",
-    "test/tree-construction/tables01.dat",
-    "test/tree-construction/tests_innerHTML_1.dat",
-    "test/tree-construction/tricky01.dat",
-    "test/tree-construction/webkit01.dat",
-    "test/tree-construction/webkit02.dat",
-}
-
-for i = 1, 26 do
-    if i ~= 13 then
-        filenames[#filenames+1] = "test/tree-construction/tests" .. i .. ".dat"
-    end
-end
+local filenames = {}
 
 local function serialize(document)
-    assert(document and document.type == "document")
     local buf = Buffer()
     local indent = Indent(2)
     local function writeNode(node, depth)
         local type = node.nodeType
         if type == ELEMENT_NODE then
             local i1, i2 = indent[depth], indent[depth+1]
-            local namespace = nsmap[node.namespaceURI] or ""
-            buf:write("| ", i1, "<", namespace, node.localName, ">\n")
+            buf:write("| ", i1, "<")
+            local namespace = node.namespace
+            if namespace ~= "html" then
+                buf:write(namespace, " ")
+            end
+            buf:write(node.localName, ">\n")
 
             -- The html5lib tree format expects attributes to be sorted by
             -- name, in lexicographic order. Instead of sorting in-place or
@@ -75,20 +46,28 @@ local function serialize(document)
                 buf:write("| ", i2, prefix, a.name, '="', a.value, '"\n')
             end
 
-            local children = node.childNodes
-            local n = #children
+            local childNodes
+            if node.type == "template" then
+                buf:write("| ", i2, "content\n")
+                depth = depth + 1
+                childNodes = node.content.childNodes
+            else
+                childNodes = node.childNodes
+            end
+
+            local n = #childNodes
             for i = 1, n do
-                if children[i].type == "text" and children[i+1]
-                   and children[i+1].type == "text"
+                if childNodes[i].type == "text" and childNodes[i+1]
+                   and childNodes[i+1].type == "text"
                 then
                     -- Merge adjacent text nodes, as expected by the
                     -- spec and the html5lib tests
                     -- TODO: Why doesn't Gumbo do this during parsing?
-                    local text = children[i+1].data
-                    children[i+1] = children[i]
-                    children[i+1].data = children[i+1].data .. text
+                    local text = childNodes[i+1].data
+                    childNodes[i+1] = childNodes[i]
+                    childNodes[i+1].data = childNodes[i+1].data .. text
                 else
-                    writeNode(children[i], depth + 1)
+                    writeNode(childNodes[i], depth + 1)
                 end
             end
         elseif type == TEXT_NODE then
@@ -135,35 +114,51 @@ local function parseTestData(filename)
             buffer:write(line, "\n")
         end
     end
+    assert(testnum > 0, "No test data found in " .. filename)
     tests[testnum][field] = buffer:tostring()
-    if testnum > 0 then
-        return tests
-    else
-        return nil, "No test data found in " .. filename
+    return tests
+end
+
+do
+    local pipe = assert(popen("echo test/tree-construction/*.dat"))
+    local text = assert(pipe:read("*a"))
+    pipe:close()
+    assert(text:len() > 0, "No test data found")
+    local i = 0
+    for filename in text:gmatch("%S+") do
+        i = i + 1
+        filenames[i] = filename
     end
+    assert(i > 0, "No test data found")
 end
 
 do
     local hrule = ("="):rep(76)
-    local totalPassed, totalFailed, totalSkipped = 0, 0, 0
+    local passed, failed, skipped = 0, 0, 0
     local start = clock()
     for _, filename in ipairs(filenames) do
-        local tests = assert(parseTestData(filename))
-        local passed, failed, skipped = 0, 0, 0
+        local tests = parseTestData(filename)
         for i, test in ipairs(tests) do
             local input = assert(test.data)
-            if
-                -- Gumbo can't parse document fragments yet
-                test["document-fragment"]
-                -- See line 134 of python/gumbo/html5lib_adapter_test.py
-                or input:find("<noscript>", 1, true)
-                or input:find("<command>", 1, true)
-            then
+            if input:find("<noscript>") then
                 skipped = skipped + 1
             else
                 local expected = assert(test.document)
-                local parsed = assert(parse(input))
-                local serialized = assert(serialize(parsed))
+                assert(#expected > 0)
+                local parsed, serialized
+                local fragment = test["document-fragment"]
+                if fragment then
+                    local ns, tag = fragment:match("^([a-z]+) +([a-z-]+)$")
+                    if ns then
+                        parsed = assert(parse(input, nil, tag, ns))
+                    else
+                        parsed = assert(parse(input, nil, fragment))
+                    end
+                    serialized = assert(serialize(parsed.documentElement))
+                else
+                    parsed = assert(parse(input))
+                    serialized = assert(serialize(parsed))
+                end
                 if serialized == expected then
                     passed = passed + 1
                 else
@@ -182,21 +177,18 @@ do
                 end
             end
         end
-        totalPassed = totalPassed + passed
-        totalFailed = totalFailed + failed
-        totalSkipped = totalSkipped + skipped
     end
     local stop = clock()
-    if verbose or totalFailed > 0 then
+    if verbose or failed > 0 then
         write (
-            "\nRan ", totalPassed + totalFailed + totalSkipped, " tests in ",
-            format("%.2fs", stop - start), "\n\n",
-            "Passed: ", totalPassed, "\n",
-            "Failed: ", totalFailed, "\n",
-            "Skipped: ", totalSkipped, "\n\n"
+            "\nRan ", passed + failed, " tests in ",
+            ("%.2fs"):format(stop - start), "\n\n",
+            "Passed: ", passed, "\n",
+            "Failed: ", failed, "\n",
+            "Skipped: ", skipped, "\n\n"
         )
     end
-    if totalFailed > 0 then
+    if failed > 0 then
         if not verbose then
             write "Re-run with VERBOSE=1 for a full report\n"
         end

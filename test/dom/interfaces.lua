@@ -32,19 +32,6 @@ local p2 = assert(document:getElementById("p2"))
 local p3 = assert(document:getElementById("p3"))
 local p4 = assert(document:getElementById("p4"))
 
-assert(document:getElementsByTagName("head")[1] == head)
-assert(document:getElementsByTagName("body")[1] == body)
-assert(document:getElementsByTagName("div")[1] == main)
-assert(document:getElementsByTagName("*").length == 11)
-assert(document:getElementsByTagName("").length == 0)
-assert(body:getElementsByTagName("h1")[1] == heading)
-
-do
-    local tendivs = assert(("<div>"):rep(10))
-    local document = assert(gumbo.parse(tendivs))
-    assert(document:getElementsByTagName("div").length == 10)
-end
-
 assert(document.nodeName == "#document")
 assert(#document.childNodes == 1)
 assert(#document.children == 1)
@@ -60,7 +47,6 @@ assert(document.compatMode == "BackCompat")
 assert(document.parentNode == nil)
 assert(document.parentElement == nil)
 assert(document.ownerDocument == nil)
-assert(document.nodeValue == nil)
 document.nodeName = "this-is-readonly"
 assert(document.nodeName == "#document")
 
@@ -107,7 +93,6 @@ newelem:setAttribute("test", "---")
 assert(newelem.attributes.length == 1)
 newelem:setAttribute("xyz", "+++")
 assert(newelem.attributes.length == 2)
--- TODO: assert(newelem.attributes[2].ownerElement == newelem)
 assert(newelem:getAttribute("test") == "---")
 assert(newelem:getAttribute("xyz") == "+++")
 assert(newelem:getAttribute("xyz") == newelem.attributes[2].value)
@@ -149,7 +134,6 @@ assert(html.ownerDocument == document)
 assert(html.firstElementChild == head)
 assert(html.lastElementChild == body)
 assert(html.childElementCount == 2)
-assert(html.nodeValue == nil)
 assert(html.innerHTML == "<head></head><body>"..input.."</body>")
 assert(html.outerHTML == "<html><head></head><body>"..input.."</body></html>")
 
@@ -205,7 +189,6 @@ assert(main:hasAttributes() == true)
 assert(main.attributes.length == 2)
 assert(main:hasAttribute("class") == true)
 assert(main:getAttribute("class") == "foo bar baz etc")
--- TODO: assert(main.attributes.class.ownerElement == main)
 assert(main.id == "main")
 assert(main.id == main.attributes.id.value)
 assert(main.id == main.attributes.id.textContent)
@@ -252,7 +235,6 @@ assert(section.attributes.length == 1)
 assert(text.nodeName == "#text")
 assert(text.nodeType == document.TEXT_NODE)
 assert(text.data == "Title ")
-assert(text.nodeValue == text.data)
 assert(text.length == #text.data)
 assert(text.parentNode == heading)
 assert(text.ownerDocument == document)
@@ -268,7 +250,6 @@ assert(textclone:isEqualNode(heading) == false)
 assert(comment.nodeName == "#comment")
 assert(comment.nodeType == document.COMMENT_NODE)
 assert(comment.data == "comment ")
-assert(comment.nodeValue == comment.data)
 assert(comment.length == #comment.data)
 assert(comment.parentNode == heading)
 assert(comment.parentElement == heading)
@@ -286,7 +267,6 @@ assert(heading.parentNode == main)
 assert(heading.ownerDocument == document)
 assert(heading.childElementCount == 0)
 
-assert(heading.attributes[1].specified == true)
 assert(heading.attributes[1].name == "id")
 assert(heading.attributes[1].localName == "id")
 
@@ -367,51 +347,3 @@ assert(value:find("NotFoundError", 1, true))
 assert(html.parentNode == document)
 assert(document:removeChild(html) == html)
 assert(html.parentNode == nil)
-
-do
-    local document = assert(gumbo.parse("<!doctype html><p>no-quirks!</p>"))
-    assert(document.compatMode == "CSS1Compat")
-    local doctype = assert(document.doctype)
-    assert(doctype.nodeType == document.DOCUMENT_TYPE_NODE)
-    assert(doctype.nodeName == doctype.name)
-    assert(doctype.name == "html")
-    assert(doctype.publicId == "")
-    assert(doctype.systemId == "")
-    doctype.publicId = nil
-    assert(doctype.publicId == "")
-    doctype.systemId = nil
-    assert(doctype.systemId == "")
-end
-
-do
-    local input = [[<script>a = 1 << 4;</script><p class='&"'>a = 1 << 4;</p>]]
-    local document = assert(gumbo.parse(input))
-    local script = assert(document:getElementsByTagName("script")[1])
-    local p = assert(document:getElementsByTagName("p")[1])
-    assert(script.innerHTML == "a = 1 << 4;")
-    assert(p.innerHTML == "a = 1 &lt;&lt; 4;")
-    assert(p.outerHTML == '<p class="&amp;&quot;">a = 1 &lt;&lt; 4;</p>')
-end
-
-do
-    local input = [[
-        <div id="example">
-            <p id="p1" class="aaa bbb"/>
-            <p id="p2" class="aaa ccc"/>
-            <p id="p3" class="bbb ccc"/>
-        </div>
-    ]]
-    local document = assert(gumbo.parse(input))
-    local example = assert(document:getElementById('example'))
-    local aaa = assert(example:getElementsByClassName('aaa'))
-    local ccc_bbb = assert(example:getElementsByClassName('ccc bbb'))
-    local bbb_ccc = assert(example:getElementsByClassName('bbb ccc '))
-    assert(aaa.length == 2)
-    assert(aaa[1].id == "p1")
-    assert(aaa[2].id == "p2")
-    assert(ccc_bbb.length == 1)
-    assert(ccc_bbb[1].id == "p3")
-    assert(bbb_ccc.length == 1)
-    assert(bbb_ccc[1].id == "p3")
-    assert(example:getElementsByClassName('aaa,bbb').length == 0)
-end

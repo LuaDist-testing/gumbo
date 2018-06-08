@@ -1,6 +1,5 @@
-local assertions = require "gumbo.dom.assertions"
-local assertNode = assertions.assertNode
-local remove = table.remove
+local util = require "gumbo.dom.util"
+local assertNode = util.assertNode
 local _ENV = nil
 local ChildNode = {}
 

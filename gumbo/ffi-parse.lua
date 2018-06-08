@@ -19,12 +19,13 @@ local ffi = require "ffi"
 local C = require "gumbo.ffi-cdef"
 local Document = require "gumbo.dom.Document"
 local DocumentType = require "gumbo.dom.DocumentType"
+local DocumentFragment = require "gumbo.dom.DocumentFragment"
 local Element = require "gumbo.dom.Element"
-local Attr = require "gumbo.dom.Attr"
+local Attribute = require "gumbo.dom.Attribute"
 local Text = require "gumbo.dom.Text"
 local Comment = require "gumbo.dom.Comment"
 local NodeList = require "gumbo.dom.NodeList"
-local NamedNodeMap = require "gumbo.dom.NamedNodeMap"
+local AttributeList = require "gumbo.dom.AttributeList"
 local GumboStringPiece = ffi.typeof "GumboStringPiece"
 local have_tnew, tnew = pcall(require, "table.new")
 local createtable = have_tnew and tnew or function() return {} end
@@ -32,10 +33,10 @@ local cstring, cast, new = ffi.string, ffi.cast, ffi.new
 local tonumber, setmetatable, format = tonumber, setmetatable, string.format
 local function oob(t, k) error(format("Index out of bounds: %s", k), 2) end
 local function LookupTable(t) return setmetatable(t, {__index = oob}) end
-local w3 = "http://www.w3.org/"
-local tagnsmap = LookupTable{w3.."2000/svg", w3.."1998/Math/MathML"}
+local tagnsmap = LookupTable{"svg", "math"}
 local attrnsmap = LookupTable{"xlink", "xml", "xmlns"}
 local quirksmap = LookupTable{[0] = "no-quirks", "quirks", "limited-quirks"}
+local namespaces = {html = 0, svg = 1, math = 2}
 local constructors
 
 local function get_attributes(attrs)
@@ -55,10 +56,10 @@ local function get_attributes(attrs)
             if attr.attr_namespace ~= C.GUMBO_ATTR_NAMESPACE_NONE then
                 a.prefix = attrnsmap[tonumber(attr.attr_namespace)]
             end
-            t[i+1] = setmetatable(a, Attr)
+            t[i+1] = setmetatable(a, Attribute)
             t[name] = a
         end
-        return setmetatable(t, NamedNodeMap)
+        return setmetatable(t, AttributeList)
     end
 end
 
@@ -105,13 +106,29 @@ local function create_element(node, depth)
         offset = element.start_pos.offset
     }
     if element.tag_namespace ~= C.GUMBO_NAMESPACE_HTML then
-        t.namespaceURI = tagnsmap[tonumber(element.tag_namespace)]
+        t.namespace = tagnsmap[tonumber(element.tag_namespace)]
     end
     local parseFlags = tonumber(node.parse_flags)
     if parseFlags ~= 0 then
         t.parseFlags = parseFlags
     end
     add_children(t, element.children, 1, depth)
+    return setmetatable(t, Element)
+end
+
+local function create_template(node, depth)
+    local element = node.v.element
+    local t = {
+        type = "template",
+        localName = "template",
+        attributes = get_attributes(element.attributes),
+        line = element.start_pos.line,
+        column = element.start_pos.column,
+        offset = element.start_pos.offset,
+        childNodes = setmetatable({}, NodeList),
+        content = setmetatable({}, DocumentFragment)
+    }
+    add_children(t.content, element.children, 1, depth)
     return setmetatable(t, Element)
 end
 
@@ -153,19 +170,13 @@ constructors = LookupTable {
     create_cdata,
     create_comment,
     create_whitespace,
+    create_template
 }
 
-local function parse(input, tab_stop)
-    assert(type(input) == "string")
-    assert(type(tab_stop) == "number" or tab_stop == nil)
-    local options = new("GumboOptions", C.kGumboDefaultOptions)
-    options.tab_stop = tab_stop or 8
-    local output = C.gumbo_parse_with_options(options, input, #input)
-    local document = output.document.v.document
-    local t = {
-        quirksMode = quirksmap[tonumber(document.doc_type_quirks_mode)]
-    }
+local function create_document(document)
+    local t = {}
     if document.has_doctype then
+        t.quirksMode = quirksmap[tonumber(document.doc_type_quirks_mode)]
         local doctype = {
             name = cstring(document.name),
             publicId = cstring(document.public_identifier),
@@ -176,8 +187,41 @@ local function parse(input, tab_stop)
     else
         add_children(t, document.children, 1, 0)
     end
-    C.gumbo_destroy_output(options, output)
     return setmetatable(t, Document)
+end
+
+local function parse(input, tabStop, tagname, ns)
+    assert(type(input) == "string")
+    local options = new("GumboOptions", C.kGumboDefaultOptions)
+    if tabStop ~= nil then
+        assert(type(tabStop) == "number")
+        options.tab_stop = tabStop
+    end
+    if tagname ~= nil then
+        assert(type(tagname) == "string")
+        options.fragment_context = C.gumbo_tag_enum(tagname)
+    end
+    if ns ~= nil then
+        assert(type(ns) == "string")
+        local validNamespace = namespaces[ns]
+        if validNamespace then
+            options.fragment_namespace = validNamespace
+        else
+            error("bad argument #3; invalid namespace '" .. ns .. "'", 2)
+        end
+    end
+    local output = C.gumbo_parse_with_options(options, input, #input)
+    if output ~= nil then
+        local ok, result = pcall(create_document, output.document.v.document)
+        C.gumbo_destroy_output(options, output)
+        if ok == true then
+            return result
+        else
+            return nil, result
+        end
+    else
+        return nil, "Failed to parse"
+    end
 end
 
 return parse

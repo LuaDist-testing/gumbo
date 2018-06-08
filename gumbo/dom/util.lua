@@ -1,22 +1,13 @@
-local type, select, pairs, require = type, select, pairs, require
-local assert, rawset = assert, rawset
+local type, select, pairs = type, select, pairs
+local assert, error, rawset = assert, error, rawset
 local _ENV = nil
-
 local util = {}
 
 function util.merge(...)
     local t = {getters={}}
     for i = 1, select("#", ...) do
-        local arg = select(i, ...)
-        local argtype = type(arg)
-        local m
-        if argtype == "string" then
-            m = require("gumbo.dom." .. arg)
-        elseif argtype == "table" then
-            m = arg
-        else
-            assert(false, "Invalid argument type")
-        end
+        local m = select(i, ...)
+        assert(type(m) == "table")
         for k, v in pairs(m) do
             local tk = t[k]
             if type(v) == "table" and type(tk) == "table" then
@@ -28,6 +19,8 @@ function util.merge(...)
             end
         end
     end
+    t.__index = util.indexFactory(t)
+    t.__newindex = util.newindexFactory(t)
     return t
 end
 
@@ -57,6 +50,65 @@ function util.newindexFactory(t)
             rawset(self, k, v)
         end
     end
+end
+
+-- TODO: Better error messages
+
+function util.assertNode(v)
+    if not (v and type(v) == "table" and v.nodeType) then
+        error("TypeError: Argument is not a Node", 3)
+    end
+end
+
+function util.assertDocument(v)
+    if not (v and type(v) == "table" and v.type == "document") then
+        error("TypeError: Argument is not a Document", 3)
+    end
+end
+
+function util.assertElement(v)
+    if not (v and type(v) == "table" and v.type == "element") then
+        error("TypeError: Argument is not an Element", 3)
+    end
+end
+
+function util.assertTextNode(v)
+    if not (v and type(v) == "table" and v.nodeName == "#text") then
+        error("TypeError: Argument is not a Text node", 3)
+    end
+end
+
+function util.assertComment(v)
+    if not (v and type(v) == "table" and v.type == "comment") then
+        error("TypeError: Argument is not a Comment", 3)
+    end
+end
+
+function util.assertString(v)
+    if type(v) ~= "string" then
+        error("TypeError: Argument is not a string", 3)
+    end
+end
+
+function util.assertStringOrNil(v)
+    if v ~= nil and type(v) ~= "string" then
+        error("TypeError: Argument is not a string", 3)
+    end
+end
+
+function util.assertName(v)
+    if type(v) ~= "string" then
+        error("TypeError: Argument is not a string", 3)
+    elseif not v:find("^[A-Za-z:_][A-Za-z0-9:_.-]*$") then
+        -- TODO: If ASCII name pattern isn't found, try full Unicode match
+        --       before throwing an error.
+        --       See: http://www.w3.org/TR/xml/#NT-Name
+        error("InvalidCharacterError", 3)
+    end
+end
+
+function util.NYI()
+    error("Not yet implemented", 2)
 end
 
 return util

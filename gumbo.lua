@@ -1,35 +1,29 @@
-local parse
-
-if jit and jit.status() then
-    local haveffi, ffi = pcall(require, "ffi")
-    if haveffi then
-        parse = require "gumbo.ffi-parse"
-    end
-end
-
-if not parse then
-    parse = require "gumbo.parse"
-end
-
+local useffi = jit and jit.status() and pcall(require, "ffi")
+local parse = useffi and require "gumbo.ffi-parse" or require "gumbo.parse"
 local type, open, iotype = type, io.open, io.type
+local assert, error = assert, error
 local _ENV = nil
 
-local function parseFile(pathOrFile, tabStop)
+local function parseFile(pathOrFile, tabStop, ctx, ctxns)
     local file, openerr
+    local closeAfterRead = false
     if type(pathOrFile) == "string" then
         file, openerr = open(pathOrFile)
         if not file then
             return nil, openerr
         end
+        closeAfterRead = true
     elseif iotype(pathOrFile) == "file" then
         file = pathOrFile
     else
-        return nil, "Invalid argument #1: not a file handle or filename string"
+        error("Invalid argument #1: not a file handle or filename string")
     end
     local text, readerr = file:read("*a")
-    file:close()
+    if closeAfterRead == true then
+        file:close()
+    end
     if text then
-        return parse(text, tabStop)
+        return parse(text, tabStop, ctx, ctxns)
     else
         return nil, readerr
     end

@@ -1,7 +1,6 @@
 local gumbo = require "gumbo"
 local parse, parseFile = gumbo.parse, gumbo.parseFile
-local assert, type, open, pcall = assert, type, io.open, pcall
-local load = loadstring or load
+local assert, open, pcall = assert, io.open, pcall
 local _ENV = nil
 
 do
@@ -31,7 +30,7 @@ do
     assert(html.nonExistantField == "new-value")
 end
 
-do -- Check that Attr.escapedValue works correctly
+do -- Check that Attribute.escapedValue works correctly
     local doc = assert(parse[[<div id=test class='x&nbsp;"&amp"&amp;;"'>]])
     local test = assert(doc:getElementById("test"))
     local class = test.attributes.class
@@ -57,7 +56,10 @@ end
 
 do -- Make sure maximum tree depth limit is enforced
     local input = ("<div>"):rep(801)
-    assert(not pcall(parse, input))
+    local document, errmsg = parse(input)
+    assert(document == nil)
+    assert(errmsg ~= nil)
+    assert(errmsg:find("depth limit"))
 end
 
 do -- Check that parseFile works the same with a filename as with a file
@@ -88,8 +90,29 @@ do -- Check that writing to default, shared childNodes table throws an error
     assert(not pcall(text.appendChild, text, div))
 end
 
+do -- Check that passing invalid arguments throws an error
+    assert(not pcall(parseFile, 0))
+    assert(not pcall(parseFile, nil))
+    assert(not pcall(parseFile, true))
+    assert(not pcall(parseFile, {}))
+    assert(not pcall(parseFile, parseFile))
+    local file = open("test/data/t1.html")
+    assert(pcall(parseFile, file, 8, "iframe", "html"))
+    assert(pcall(parseFile, file, 8, "path", "svg"))
+    assert(pcall(parseFile, file, 8, "table", nil))
+    assert(pcall(parseFile, file, 8, nil, nil))
+    assert(not pcall(parseFile, file, true))
+    assert(not pcall(parseFile, file, {}))
+    assert(not pcall(parseFile, file, 8, "div", "badns"))
+    assert(not pcall(parseFile, file, nil, "div", "badns"))
+    assert(not pcall(parseFile, file, "div", "badns"))
+    assert(not pcall(parseFile, file, "div", true))
+    assert(not pcall(parseFile, file, "div"))
+    assert(not pcall(parseFile, file, "div", "html", 8))
+    assert(not pcall(parseFile, file, nil, nil, 8))
+end
+
 -- Check that file open/read errors are handled
-assert(not parseFile(0), "Passing an invalid argument type should return nil")
 assert(not parseFile".", "Passing a directory name should return nil")
 assert(not parseFile"_", "Passing a non-existant filename should return nil")
 
